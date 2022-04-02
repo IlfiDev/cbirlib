@@ -1,4 +1,4 @@
-from cbirlib.CBIR import DenseLayer, ActivationReLU, ActivationSoftmax, Loss_CategoricalCrossentropy
+from cbirlib.CBIR import *
 import nnfs
 import matplotlib.pyplot as plt
 import numpy as np
@@ -7,44 +7,39 @@ from nnfs.datasets import vertical_data
 
 nnfs.init()
 
-X, y = vertical_data(samples=100, classes=3)
+X, y = spiral_data(samples=100, classes=3)
 plt.scatter(X[:, 0], X[:, 1], c=y, s=40, cmap='brg')
 plt.show()
 if __name__ == '__main__':
-
-    dense1 = DenseLayer(2, 3)
-    dense2 = DenseLayer(3, 3)
-
+    optimizer = SGD_Optimizer(decay=1e-3, momentum=0.9)
+    dense1 = DenseLayer(2, 64)
     activation1 = ActivationReLU()
-    activation2 = ActivationSoftmax()
-    loss_function = Loss_CategoricalCrossentropy()
-    dense1.forward(X)
+    dense2 = DenseLayer(64, 3)
+    loss_activation = Activation_softmax_Loss_CategoricalCrossentropy()
 
-    lowest_loss = 9999999
-    best_dense1_weights = dense1.weights.copy()
-    nest_dense1_biases = dense1.biases.copy()
-    best_dense2_weights = dense2.weights.copy()
-    nest_dense2_biases = dense2.biases.copy()
-
-    for iteration in range(10000):
-        dense1.weights += 0.05 * np.random.randn(2, 3)
-        dense1.biases += 0.05 * np.random.randn(1, 3)
-        dense2.weights += 0.05 * np.random.randn(3, 3)
-        dense2.biases += 0.05 * np.random.randn(1, 3)
-
+    for epoch in range(10001):
         dense1.forward(X)
         activation1.forward(dense1.output)
         dense2.forward(activation1.output)
-        activation2.forward(dense2.output)
-
-        loss = loss_function.calculate(activation2.output, y)
-        predictions = np.argmax(activation2.output, axis=1)
+        loss = loss_activation.forward(dense2.output, y)
+        predictions = np.argmax(loss_activation.output, axis=1)
+        if len(y.shape) == 2:
+            y = np.argmax(y, axis=1)
+        #np.mean = среднее арифметическое
         accuracy = np.mean(predictions == y)
 
-        if loss < lowest_loss:
-            print("New set of weights found, iteration:", iteration, "loss:", loss, "acc:", accuracy)
-            best_dense1_weights = dense1.weights.copy()
-            best_dense1_biases = dense1.biases.copy()
-            best_dense2_weights = dense2.weights.copy()
-            best_dense2_biases = dense2.biases.copy()
-            lowest_loss = loss
+        if not epoch % 100:
+            print(f'{epoch}, ' +
+                  f'acc: {accuracy:.3f}, ' +
+                  f'loss: {loss:.3f}, ' +
+                  f'lr: {optimizer.current_learning_rate}')
+
+        loss_activation.backward(loss_activation.output, y)
+        dense2.backward(loss_activation.dinputs)
+        activation1.backward(dense2.dinputs)
+        dense1.backward(activation1.dinputs)
+
+        optimizer.pre_update_params()
+        optimizer.update_params(dense1)
+        optimizer.update_params(dense2)
+        optimizer.post_update_params()
